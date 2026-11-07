@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"runtime/debug"
 	"sort"
 	"sync"
 	"time"
@@ -23,7 +24,17 @@ import (
 	"github.com/jcpsimmons/sharkboard/internal/tui"
 )
 
-const version = "0.1.0"
+// version is filled from the module build info, so `go install ...@v0.2.0`
+// reports v0.2.0 and a local `go build` honestly reports devel.
+var version = "devel"
+
+func init() {
+	if bi, ok := debug.ReadBuildInfo(); ok {
+		if v := bi.Main.Version; v != "" && v != "(devel)" {
+			version = v
+		}
+	}
+}
 
 func main() {
 	var (
