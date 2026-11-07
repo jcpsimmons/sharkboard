@@ -32,6 +32,27 @@ func TestParseRejectsFieldZero(t *testing.T) {
 	}
 }
 
+// Field numbers above 2^29-1 do not exist, and a corrupt tag can push one
+// there.
+func TestParseRejectsHugeFieldNumber(t *testing.T) {
+	tag := uint64(1<<29) << 3 // 2^29 as a field number
+	var b []byte
+	for {
+		c := byte(tag & 0x7f)
+		tag >>= 7
+		if tag != 0 {
+			b = append(b, c|0x80)
+			continue
+		}
+		b = append(b, c)
+		break
+	}
+	b = append(b, 0x01)
+	if _, err := Parse(b); err == nil {
+		t.Error("no error for an out-of-range field number")
+	}
+}
+
 func TestParseTruncated(t *testing.T) {
 	cases := map[string][]byte{
 		"varint past end":   {0x08},
@@ -132,8 +153,8 @@ func TestCommandPayloads(t *testing.T) {
 }
 
 func TestActionLookup(t *testing.T) {
-	if len(Actions()) != 5 {
-		t.Errorf("Actions() = %d, want 5", len(Actions()))
+	if len(Actions()) != 7 {
+		t.Errorf("Actions() = %d, want 7", len(Actions()))
 	}
 	a, ok := ActionByKey("dock")
 	if !ok {
@@ -144,6 +165,13 @@ func TestActionLookup(t *testing.T) {
 	}
 	if a, _ := ActionByKey("heartbeat-a"); a.Risky {
 		t.Error("heartbeat marked risky")
+	}
+	// Command frames go to the command topic; the wifi strings do not.
+	if a, _ := ActionByKey("dock"); a.Target() != TopicInput {
+		t.Errorf("dock target = %q", a.Target())
+	}
+	if a, _ := ActionByKey("wifi-up"); a.Target() != TopicWiFi || a.Risky {
+		t.Errorf("wifi action = %+v", a)
 	}
 	if _, ok := ActionByKey("nope"); ok {
 		t.Error("unknown action found")

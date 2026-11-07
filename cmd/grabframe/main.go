@@ -1,6 +1,14 @@
+// Command grabframe saves one live MQTT frame to a file, which is where the
+// test fixtures in internal/qfeel/testdata came from.
+//
+//	go run ./cmd/grabframe -host 192.168.1.79 /qfeel/PbOutput /tmp/frame.b64 20000
+//
+// The optional trailing argument is a minimum payload size, so a scan bundle can
+// be waited for without picking up a 60-byte status frame first.
 package main
 
 import (
+	"flag"
 	"fmt"
 	"os"
 	"time"
@@ -10,11 +18,19 @@ import (
 )
 
 func main() {
-	topic := os.Args[1]
-	out := os.Args[2]
+	host := flag.String("host", "192.168.1.79", "broker host")
+	port := flag.Int("port", 1883, "broker port")
+	flag.Parse()
+	if flag.NArg() < 2 {
+		fmt.Fprintln(os.Stderr, "usage: grabframe [-host H] <topic> <outfile> [min bytes]")
+		os.Exit(2)
+	}
+	topic, out := flag.Arg(0), flag.Arg(1)
 	minBytes := 0
-	fmt.Sscan(os.Args[3], &minBytes)
-	c := broker.New(broker.Options{Addr: "192.168.1.79:1883"})
+	if flag.NArg() > 2 {
+		fmt.Sscan(flag.Arg(2), &minBytes)
+	}
+	c := broker.New(broker.Options{Addr: fmt.Sprintf("%s:%d", *host, *port)})
 	if err := c.Start(); err != nil {
 		panic(err)
 	}

@@ -114,12 +114,15 @@ func (c *Client) Addr() string { return c.opts.Addr }
 
 // Start dials the broker and subscribes to "#". It returns once the TCP dial
 // has been attempted; reconnects are handled by the MQTT library afterwards.
+//
+// A second Start (the reconnect key) disconnects the previous client first, and
+// the pointer swap is done under the mutex because publishes read it from other
+// goroutines.
 func (c *Client) Start() error {
-	host, _, err := net.SplitHostPort(c.opts.Addr)
-	if err != nil {
+	if _, _, err := net.SplitHostPort(c.opts.Addr); err != nil {
 		return fmt.Errorf("broker: bad address %q: %w", c.opts.Addr, err)
 	}
-	if err := probe(host); err != nil {
+	if err := probe(c.opts.Addr); err != nil {
 		return err
 	}
 
@@ -144,9 +147,17 @@ func (c *Client) Start() error {
 		c.setStatus(StatusDown, err.Error())
 	})
 
-	c.paho = mqtt.NewClient(o)
+	client := mqtt.NewClient(o)
+	c.mu.Lock()
+	old := c.paho
+	c.paho = client
+	c.mu.Unlock()
+	if old != nil && old.IsConnectionOpen() {
+		old.Disconnect(100)
+	}
+
 	c.setStatus(StatusConnecting, "")
-	tok := c.paho.Connect()
+	tok := client.Connect()
 	tok.Wait()
 	if err := tok.Error(); err != nil {
 		c.setStatus(StatusDown, err.Error())
@@ -156,31 +167,42 @@ func (c *Client) Start() error {
 }
 
 // probe does a plain TCP dial first, because paho's dial error text is vague and
-// a wrong IP is by far the most common failure here.
-func probe(host string) error {
-	conn, err := net.DialTimeout("tcp", net.JoinHostPort(host, "1883"), 3*time.Second)
+// a wrong address is by far the most common failure here.
+func probe(addr string) error {
+	conn, err := net.DialTimeout("tcp", addr, 3*time.Second)
 	if err != nil {
-		return fmt.Errorf("broker: %s:1883 unreachable (wrong IP, powered off, or off the network?)", host)
+		return fmt.Errorf("broker: %s unreachable (wrong address, powered off, or off the network?)", addr)
 	}
 	return conn.Close()
 }
 
 func (c *Client) onMessage(_ mqtt.Client, m mqtt.Message) {
-	payload := append([]byte(nil), m.Payload()...)
+	c.push(m.Topic(), append([]byte(nil), m.Payload()...), false)
+}
+
+// push records one frame and rolls the per-topic counters. Published frames are
+// recorded too, so a write shows up in the log and the topic list beside the
+// traffic it causes.
+func (c *Client) push(topic string, payload []byte, local bool) {
 	now := time.Now()
 
 	c.mu.Lock()
+	defer c.mu.Unlock()
+
 	c.seq++
-	msg := Msg{Seq: c.seq, Topic: m.Topic(), Payload: payload, At: now}
-	c.ring[c.next] = msg
+	if c.full {
+		c.dropped++
+	}
+	c.ring[c.next] = Msg{Seq: c.seq, Topic: topic, Payload: payload, At: now, Local: local}
 	c.next = (c.next + 1) % len(c.ring)
 	if c.next == 0 {
 		c.full = true
 	}
-	st := c.stats[m.Topic()]
+
+	st := c.stats[topic]
 	if st == nil {
-		st = &TopicStat{Topic: m.Topic()}
-		c.stats[m.Topic()] = st
+		st = &TopicStat{Topic: topic}
+		c.stats[topic] = st
 	}
 	st.Count++
 	st.Bytes += len(payload)
@@ -194,20 +216,22 @@ func (c *Client) onMessage(_ mqtt.Client, m mqtt.Message) {
 	if len(c.recent) > 2048 {
 		c.recent = c.recent[len(c.recent)-2048:]
 	}
-	c.mu.Unlock()
 }
 
 // Publish sends a payload at QoS 0 with no retain, as the app does.
 func (c *Client) Publish(topic string, payload []byte) error {
-	if c.paho == nil || !c.paho.IsConnectionOpen() {
-		return errors.New("broker: not connected")
-	}
 	select {
 	case <-c.done:
 		return ErrClosed
 	default:
 	}
-	tok := c.paho.Publish(topic, 0, false, payload)
+	c.mu.Lock()
+	client := c.paho
+	c.mu.Unlock()
+	if client == nil || !client.IsConnectionOpen() {
+		return errors.New("broker: not connected")
+	}
+	tok := client.Publish(topic, 0, false, payload)
 	tok.Wait()
 	return tok.Error()
 }
@@ -216,14 +240,7 @@ func (c *Client) Publish(topic string, payload []byte) error {
 // it causes. The robot does not echo inbound frames on the wire, so without
 // this the command pane has nothing to point at.
 func (c *Client) Published(topic string, payload []byte) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	c.seq++
-	c.ring[c.next] = Msg{Seq: c.seq, Topic: topic, Payload: payload, At: time.Now(), Local: true}
-	c.next = (c.next + 1) % len(c.ring)
-	if c.next == 0 {
-		c.full = true
-	}
+	c.push(topic, payload, true)
 }
 
 // Snapshot returns the ring oldest-first.
@@ -312,7 +329,10 @@ func (c *Client) setStatus(s Status, errText string) {
 // Close disconnects and stops accepting publishes.
 func (c *Client) Close() {
 	c.once.Do(func() { close(c.done) })
-	if c.paho != nil && c.paho.IsConnectionOpen() {
-		c.paho.Disconnect(150)
+	c.mu.Lock()
+	client := c.paho
+	c.mu.Unlock()
+	if client != nil && client.IsConnectionOpen() {
+		client.Disconnect(150)
 	}
 }

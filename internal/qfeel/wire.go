@@ -13,6 +13,9 @@ import (
 	"fmt"
 )
 
+// maxFieldNum is the largest field number protobuf defines.
+const maxFieldNum = 1<<29 - 1
+
 // ErrTruncated is returned when a length-delimited field runs past the buffer.
 var ErrTruncated = errors.New("qfeel: truncated protobuf")
 
@@ -114,7 +117,9 @@ func Parse(b []byte) (*Message, error) {
 		}
 		b = b[n:]
 		f := Field{Num: int(tag >> 3), Wire: Wire(tag & 7)}
-		if f.Num <= 0 {
+		// Protobuf allows 1..2^29-1. The device stays far below that, but a
+		// corrupt tag can slide into negative int territory otherwise.
+		if f.Num <= 0 || f.Num > maxFieldNum {
 			return m, fmt.Errorf("qfeel: bad field number %d", f.Num)
 		}
 		switch f.Wire {

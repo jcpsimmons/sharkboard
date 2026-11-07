@@ -31,4 +31,4 @@ sharkboard  192.168.1.79:1883  ● down                                 1 teleme
 │                                            ││                                                                    │
 │                                            ││                                                                    │
 ╰────────────────────────────────────────────╯╰────────────────────────────────────────────────────────────────────╯
-p pause  ·  s play  ·  d dock  ·  H heartbeat  ·  2 topics  ·  3 map  ·  4 publish  ·  ? help  ·  q quit
+p pause  ·  s play  ·  d dock  ·  H heartbeat  ·  writes hit ALL robots  ·  2 topics  ·  3 map  ·  4 publish  ·  ? he…

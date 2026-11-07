@@ -4,7 +4,7 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
-	"math"
+	"strings"
 	"time"
 )
 
@@ -169,18 +169,38 @@ func parseGrid(m *Message) *Grid {
 		g.OriginX = float32f(o.Msg.Get(1))
 		g.OriginY = float32f(o.Msg.Get(2))
 	}
-	g.Width = int(m.Get(3).UintValue())
-	g.Height = int(m.Get(4).UintValue())
 	if c := m.Get(6); c != nil {
 		g.Cells = c.Bytes
 	}
 	if p := m.Get(9); p != nil && p.Msg != nil && p.Msg.Get(1) != nil && p.Msg.Get(2) != nil {
 		g.PoseX, g.PoseY, g.HasPose = float32f(p.Msg.Get(1)), float32f(p.Msg.Get(2)), true
 	}
-	if g.Width <= 0 || g.Height <= 0 || len(g.Cells) == 0 {
+	if len(g.Cells) == 0 {
 		return nil
 	}
-	g.LengthMismatch = len(g.Cells) != g.Width*g.Height
+
+	// Width and height are raw varints, so a hostile or corrupt frame can
+	// declare 2^40 cells. Nothing may loop on the declaration alone: clamp both
+	// dimensions to the buffer that actually arrived, then let the row stride
+	// come from Width and the rows from what is left. Without this, one frame
+	// freezes the renderer for 10^13 iterations.
+	w := m.Get(3).UintValue()
+	h := m.Get(4).UintValue()
+	n := uint64(len(g.Cells))
+	if w == 0 || w > n {
+		w = n
+	}
+	if h == 0 || h > n {
+		h = n
+	}
+	g.Width, g.Height = int(w), int(h)
+	if g.Width*int(g.Height) != len(g.Cells) {
+		g.LengthMismatch = true
+		g.Height = len(g.Cells) / g.Width
+		if g.Height == 0 {
+			g.Height = 1
+		}
+	}
 	return g
 }
 
@@ -241,27 +261,43 @@ func Classify(v byte) CellKind {
 	return CellStray
 }
 
-// compact renders nested fields for display, capping depth and width.
-func (m *Message) compact() string {
+// compact renders nested fields for display: bounded width, bounded depth, and
+// one builder pass so a large frame stays cheap.
+func (m *Message) compact() string { return strings.TrimSpace(m.compactDepth(0)) }
+
+const (
+	compactMaxDepth = 4
+	compactMaxLen   = 360
+)
+
+func (m *Message) compactDepth(depth int) string {
 	if m == nil {
 		return ""
 	}
-	s := ""
+	var b strings.Builder
 	for i, f := range m.Fields {
 		if i > 0 {
-			s += " "
+			b.WriteByte(' ')
 		}
-		s += fmt.Sprintf("%d:", f.Num)
+		fmt.Fprintf(&b, "%d:", f.Num)
 		switch {
+		case f.Msg != nil && depth < compactMaxDepth:
+			b.WriteByte('{')
+			b.WriteString(f.Msg.compactDepth(depth + 1))
+			b.WriteByte('}')
 		case f.Msg != nil:
-			s += "{" + f.Msg.compact() + "}"
+			fmt.Fprintf(&b, "{%d fields}", len(f.Msg.Fields))
 		case f.Wire == WireBytes:
-			s += fmt.Sprintf("%q", truncate(f.Bytes, 16))
+			fmt.Fprintf(&b, "%q", truncate(f.Bytes, 16))
 		default:
-			s += fmt.Sprintf("%d", f.Uint)
+			fmt.Fprintf(&b, "%d", f.Uint)
+		}
+		if b.Len() >= compactMaxLen {
+			b.WriteString(" …")
+			break
 		}
 	}
-	return s
+	return b.String()
 }
 
 func truncate(b []byte, n int) string {
@@ -384,7 +420,14 @@ func (t *Telemetry) Snapshot() Snapshot {
 			w, h := t.Grid.Width, t.Grid.Height
 			line.Value = fmt.Sprintf("scan bundle, grid %dx%d (%d cells)", w, h, len(t.Grid.Cells))
 		case f.Num == 9:
-			line.Value = fmt.Sprintf("battery %d%%, charging flag %d", t.Battery, t.ChargingEcho())
+			batt, flag := "n/a", "n/a"
+			if t.HasBattery {
+				batt = fmt.Sprintf("%d%%", t.Battery)
+			}
+			if t.HasCharging {
+				flag = fmt.Sprintf("%d", t.Charging)
+			}
+			line.Value = "battery " + batt + ", charging flag " + flag
 		case f.Num == 4:
 			line.Value = fmt.Sprintf("%d (%s)", uint32(t.State), t.State.ShortLabel())
 		}
@@ -393,13 +436,9 @@ func (t *Telemetry) Snapshot() Snapshot {
 	return s
 }
 
-// ChargingEcho returns the observed charging flag, or 0xff when absent.
-func (t *Telemetry) ChargingEcho() uint32 {
-	if !t.HasCharging {
-		return math.MaxUint32
-	}
-	return t.Charging
-}
+// ChargingEcho returns the observed charging flag. Check HasCharging first;
+// absent flags are not 0.
+func (t *Telemetry) ChargingEcho() uint32 { return t.Charging }
 
 func valueString(f Field) string {
 	switch {

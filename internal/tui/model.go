@@ -1,7 +1,6 @@
 package tui
 
 import (
-	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -83,13 +82,15 @@ type Model struct {
 	rateHst    []float64
 	grid       *qfeel.Grid
 
-	topicCursor int
-	filter      string
-	filterMode  bool
-	followLog   bool
-	logOffset   int
+	topicCursor   int
+	topicSelected bool
+	filter        string
+	filterMode    bool
+	followLog     bool
+	logOffset     int
 
 	actionCursor int
+	inflight     bool
 	editing      int // 0 none, 1 topic field, 2 payload field
 	topicInput   textinput.Model
 	payloadInput textinput.Model
@@ -99,8 +100,8 @@ type Model struct {
 	toastAt  time.Time
 }
 
-// New builds a Model and returns the startup command that dials the broker.
-func New(opts Options) (Model, tea.Cmd) {
+// New builds a Model. Init dials the broker.
+func New(opts Options) Model {
 	ti := textinput.New()
 	ti.SetValue(qfeel.TopicInput)
 	ti.CharLimit = 128
@@ -121,7 +122,7 @@ func New(opts Options) (Model, tea.Cmd) {
 		payloadInput: pi,
 		status:       broker.StatusDown,
 	}
-	return m, m.connect()
+	return m
 }
 
 func (m *Model) connect() tea.Cmd {
@@ -136,7 +137,7 @@ func (m *Model) connect() tea.Cmd {
 	}
 }
 
-// Init starts the refresh ticker.
+// Init starts the refresh ticker and dials the broker.
 func (m Model) Init() tea.Cmd {
 	return tea.Batch(tick(m.opts.Interval), m.connect())
 }
@@ -159,6 +160,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 	case sentMsg:
+		m.inflight = false
 		m.setToast(msg.text, msg.err)
 
 	case tickMsg:
@@ -188,6 +190,7 @@ func (m *Model) onKey(k tea.KeyMsg) tea.Cmd {
 	switch k.String() {
 	case "q", "ctrl+c":
 		m.quit = true
+		m.client.Close()
 		return tea.Quit
 	case "?":
 		m.help = true
@@ -239,13 +242,18 @@ func (m *Model) topicKey(k tea.KeyMsg) tea.Cmd {
 	case "j", "down":
 		if m.topicCursor < len(stats)-1 {
 			m.topicCursor++
+			m.topicSelected = true
 			m.logOffset = 0
 		}
 	case "k", "up":
 		if m.topicCursor > 0 {
 			m.topicCursor--
+			m.topicSelected = true
 			m.logOffset = 0
 		}
+	case "a":
+		m.topicSelected = false
+		m.logOffset = 0
 	case "J":
 		m.logOffset++
 		m.followLog = false
@@ -325,8 +333,9 @@ func (m *Model) updateFilter(k tea.KeyMsg) tea.Cmd {
 	case "enter":
 		m.filterMode = false
 	case "backspace":
-		if m.filter != "" {
-			m.filter = m.filter[:len(m.filter)-1]
+		// Runes, not bytes, so a non-ASCII filter does not shred into garbage.
+		if r := []rune(m.filter); len(r) > 0 {
+			m.filter = string(r[:len(r)-1])
 		}
 	default:
 		if len(k.Runes) > 0 {
@@ -342,14 +351,21 @@ func (m *Model) fire(key string) tea.Cmd {
 	if !ok {
 		return nil
 	}
+	// One frame at a time: paho publishes asynchronously at QoS 0, and holding a
+	// key otherwise queues a burst of identical frames at the robot.
+	if m.inflight {
+		m.setToast("still sending, wait a beat", true)
+		return nil
+	}
 	if m.opts.NoPublish {
 		m.setToast("dry run: "+a.Title+" not sent", true)
 		return nil
 	}
-	return m.send(qfeel.TopicInput, []byte(a.Payload))
+	return m.send(a.Target(), []byte(a.Payload))
 }
 
 func (m *Model) send(topic string, payload []byte) tea.Cmd {
+	m.inflight = true
 	client := m.client
 	t, p := topic, string(payload)
 	return func() tea.Msg {
@@ -447,8 +463,13 @@ func (m *Model) statTopics() []broker.TopicStat {
 	return out
 }
 
-// selectedTopic is the topic under the cursor, or "" when nothing is selected.
+// selectedTopic is the topic the user pinned the log to, or "" while the log
+// shows every topic. The list is sorted by traffic, so a cursor alone would
+// silently hide topics as the busiest one changes under it.
 func (m *Model) selectedTopic() string {
+	if !m.topicSelected {
+		return ""
+	}
 	stats := m.statTopics()
 	if m.topicCursor >= 0 && m.topicCursor < len(stats) {
 		return stats[m.topicCursor].Topic
@@ -468,6 +489,3 @@ func clip(s string, n int) string {
 	}
 	return string(r[:n-1]) + "…"
 }
-
-// ErrNoClient is returned by ad-hoc helpers when the client is missing.
-var ErrNoClient = errors.New("tui: no client")

@@ -4,6 +4,7 @@ import (
 	"flag"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -15,11 +16,14 @@ import (
 
 var update = flag.Bool("update", false, "rewrite testdata goldens")
 
+// stampRE matches the clock column of a log line.
+var stampRE = regexp.MustCompile(`\d\d:\d\d:\d\d\.\d\d\d`)
+
 // fixture builds a Model with a real captured frame and no live connection, so
 // the panes can be rendered deterministically.
 func fixture(t *testing.T, frame string) Model {
 	t.Helper()
-	m, _ := New(Options{Addr: "192.168.1.79:1883"})
+	m := New(Options{Addr: "192.168.1.79:1883"})
 	m.w, m.h = 120, 38
 	if frame == "" {
 		return m
@@ -53,6 +57,12 @@ func golden(t *testing.T, name, got string) {
 	want, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatalf("read golden (run with -update): %v", err)
+	}
+	// Message timestamps are wall-clock; normalise them so a golden does not
+	// expire the moment it is written.
+	if stampRE.MatchString(got) || stampRE.MatchString(string(want)) {
+		got = stampRE.ReplaceAllString(got, "00:00:00.000")
+		want = []byte(stampRE.ReplaceAllString(string(want), "00:00:00.000"))
 	}
 	if string(want) != got {
 		t.Errorf("%s drifted from golden:\n--- got ---\n%s\n--- want ---\n%s", name, got, want)
@@ -107,6 +117,39 @@ func TestMapPaneWithoutGrid(t *testing.T) {
 	out := m.View()
 	if !strings.Contains(out, "No map on the wire") {
 		t.Error("empty map pane does not explain itself")
+	}
+}
+
+func TestTopicsPaneRenders(t *testing.T) {
+	m := fixture(t, "")
+	b, err := os.ReadFile(filepath.Join("..", "qfeel", "testdata", "frame-docked.b64"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	m.client.Published("/qfeel/PbOutput", b)
+	m.client.Published("/viper/wifiIn", []byte("WIFISecondaryCloudUp:true"))
+	m.client.Published("/qfeel/PbInput", []byte("gAEI"))
+	m.v = viewTopics
+	out := m.View()
+	golden(t, "topics.txt", out)
+
+	for _, want := range []string{"topics by traffic", "messages", "/qfeel/PbOutput", "WIFISecondaryCloudUp:true"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("topics pane missing %q", want)
+		}
+	}
+	// The wifi channel is plaintext, so it is shown as text, not decoded.
+	if !strings.Contains(out, "state=14") {
+		t.Error("telemetry preview is not summarised")
+	}
+}
+
+func TestPublishPaneMarksRiskyWrites(t *testing.T) {
+	m := fixture(t, "")
+	m.v = viewPublish
+	out := m.View()
+	if !strings.Contains(out, "▲") {
+		t.Error("risky actions are not marked")
 	}
 }
 

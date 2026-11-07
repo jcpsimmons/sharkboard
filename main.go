@@ -13,7 +13,6 @@ import (
 	"net"
 	"os"
 	"sort"
-	"strings"
 	"sync"
 	"time"
 
@@ -44,13 +43,18 @@ func main() {
 	}
 
 	addr := *host
-	if addr != "" && !strings.Contains(addr, ":") {
-		addr = net.JoinHostPort(addr, fmt.Sprint(*port))
+	if addr != "" {
+		// Accept "host", "host:port" and bare IPv6 literals.
+		h, _, err := net.SplitHostPort(addr)
+		if err != nil {
+			h = addr
+		}
+		addr = net.JoinHostPort(h, fmt.Sprint(*port))
 	}
 
 	if addr == "" {
-		fmt.Fprintln(os.Stderr, "probing the LAN for an open 1883...")
-		found, err := discover(4 * time.Second)
+		fmt.Fprintf(os.Stderr, "probing the LAN for an open %d...\n", *port)
+		found, err := discover(4*time.Second, *port)
 		if err != nil {
 			fmt.Fprintln(os.Stderr, "no broker found:", err)
 			os.Exit(1)
@@ -67,7 +71,7 @@ func main() {
 		return
 	}
 
-	m, cmd := tui.New(tui.Options{
+	m := tui.New(tui.Options{
 		Addr:      addr,
 		Interval:  *interval,
 		NoPublish: *dryRun,
@@ -78,13 +82,12 @@ func main() {
 		fmt.Fprintln(os.Stderr, "sharkboard:", err)
 		os.Exit(1)
 	}
-	_ = cmd
 }
 
 // discover scans the local /24s for anything answering on 1883 and keeps the
 // first candidate that actually publishes /qfeel traffic. The vacuum has DHCP'd
 // to .78 and .79 on different days, so a hardcoded IP rots fast.
-func discover(perHost time.Duration) (string, error) {
+func discover(perHost time.Duration, port int) (string, error) {
 	hosts := localSubnetHosts()
 	if len(hosts) == 0 {
 		return "", fmt.Errorf("no IPv4 interface with a /24")
@@ -102,7 +105,7 @@ func discover(perHost time.Duration) (string, error) {
 			defer wg.Done()
 			sem <- struct{}{}
 			defer func() { <-sem }()
-			c, err := net.DialTimeout("tcp", net.JoinHostPort(h, "1883"), perHost)
+			c, err := net.DialTimeout("tcp", net.JoinHostPort(h, fmt.Sprint(port)), perHost)
 			if err != nil {
 				return
 			}
@@ -116,18 +119,18 @@ func discover(perHost time.Duration) (string, error) {
 
 	// Prefer hosts that speak /qfeel over hosts that merely have 1883 open.
 	for _, h := range open {
-		if speaks(addr(h), 3*time.Second) {
-			return addr(h), nil
+		if speaks(addrOf(h, port), 3*time.Second) {
+			return addrOf(h, port), nil
 		}
 	}
 	if len(open) > 0 {
 		sort.Strings(open)
-		return addr(open[0]), nil
+		return addrOf(open[0], port), nil
 	}
 	return "", fmt.Errorf("nothing answered on port 1883")
 }
 
-func addr(h string) string { return net.JoinHostPort(h, "1883") }
+func addrOf(h string, port int) string { return net.JoinHostPort(h, fmt.Sprint(port)) }
 
 func speaks(a string, wait time.Duration) bool {
 	c := broker.New(broker.Options{Addr: a})

@@ -4,6 +4,7 @@ import (
 	"math"
 	"strings"
 	"testing"
+	"time"
 	"unicode/utf8"
 
 	"github.com/jcpsimmons/sharkboard/internal/qfeel"
@@ -271,6 +272,23 @@ func TestGridPose(t *testing.T) {
 			t.Fatalf("pose count = %d, want 0", n)
 		}
 	})
+}
+
+// A frame can declare a height the buffer cannot back. Before the sampling
+// loops were capped, one such frame froze the renderer.
+func TestGridAbsurdHeight(t *testing.T) {
+	g := &qfeel.Grid{Width: 3, Height: 1 << 40, Cells: []byte{15, 75, 15}, LengthMismatch: true}
+	done := make(chan []string, 1)
+	go func() { done <- Grid(g, 40, 20) }()
+	select {
+	case rows := <-done:
+		checkShape(t, rows, 40, 20)
+		if n := countRune(rows, '█'); n == 0 {
+			t.Error("gutter cells were not drawn")
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("render did not finish")
+	}
 }
 
 func TestGridLengthMismatch(t *testing.T) {

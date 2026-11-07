@@ -54,6 +54,10 @@ func (m Model) header(w int) string {
 		st = warn.Render("● connecting")
 	}
 
+	if dropped := m.client.Dropped(); dropped > 0 {
+		st += dim.Render(fmt.Sprintf("  %d dropped", dropped))
+	}
+
 	tabs := make([]string, 0, viewCount)
 	for i := view(0); i < viewCount; i++ {
 		label := fmt.Sprintf("%d %s", int(i)+1, i.title())
@@ -86,9 +90,9 @@ func (m Model) footer(w int) string {
 	var hints []string
 	switch m.v {
 	case viewDash:
-		hints = []string{"p pause", "s play", "d dock", "H heartbeat", "2 topics", "3 map", "4 publish"}
+		hints = []string{"p pause", "s play", "d dock", "H heartbeat", "writes hit ALL robots", "2 topics", "3 map", "4 publish"}
 	case viewTopics:
-		hints = []string{"j/k topic", "J/K scroll", "f follow", "/ filter", "1 telemetry"}
+		hints = []string{"j/k pin topic", "a all", "J/K scroll", "f follow", "/ filter"}
 	case viewMap:
 		hints = []string{"needs a moving robot to fill", "2 topics", "4 publish"}
 	case viewPublish:
@@ -235,13 +239,16 @@ func (m Model) topicsView(w, h int) string {
 	listW := max(28, w/3)
 
 	rows := make([]string, 0, len(stats))
+	nameW := max(8, listW-18)
 	for i, s := range stats {
-		name := clip(s.Topic, listW-12)
-		line := padRight(name, listW-12) + fmt.Sprintf("%.1f/s", s.Rate)
-		if i == m.topicCursor {
-			rows = append(rows, tabActive.Render(padRight(line, listW-2)))
+		name := clip(s.Topic, nameW)
+		plain := padRight(name, nameW) +
+			fmt.Sprintf("%6.1f/s", s.Rate) +
+			dim.Render(padLeft(fmt.Sprint(s.LastBytes), 6))
+		if m.topicSelected && i == m.topicCursor {
+			rows = append(rows, rowSel.Render(padRight(plain, listW-6)))
 		} else {
-			rows = append(rows, base.Render(line))
+			rows = append(rows, base.Render(plain))
 		}
 	}
 	if len(rows) == 0 {
@@ -256,7 +263,11 @@ func (m Model) topicsView(w, h int) string {
 
 	rightW := w - listW - 2
 	log := m.logView(rightW-ie(), h-6)
-	right := panel.Width(rightW - 2).Render(panelTitle.Render("messages") + "\n" + log)
+	head := "messages"
+	if topic := m.selectedTopic(); topic != "" {
+		head = "messages on " + clip(topic, rightW-20)
+	}
+	right := panel.Width(rightW - 2).Render(panelTitle.Render(head) + "\n" + log)
 
 	return lipgloss.JoinHorizontal(lipgloss.Top, left, right)
 }
@@ -292,6 +303,9 @@ func (m Model) mapView(w, h int) string {
 	if m.grid.HasPose {
 		meta += fmt.Sprintf("  ·  pose %.2f,%.2f", m.grid.PoseX, m.grid.PoseY)
 	}
+	if n := len(m.latest.Ranges); n > 0 && m.latest != nil {
+		meta += fmt.Sprintf("  ·  %d range arrays", n)
+	}
 
 	body := panelTitle.Render("lidar map") + dim.Render("  (live, unauthenticated, 5 Hz while moving)") + "\n" +
 		dim.Render(clip(meta, w-4)) + "\n" +
@@ -305,7 +319,11 @@ func (m Model) publishView(w, h int) string {
 	acts := qfeel.Actions()
 	rows := make([]string, 0, len(acts))
 	for i, a := range acts {
-		line := padRight(a.Title, 18) + dim.Render(a.Hint)
+		mark := "  "
+		if a.Risky {
+			mark = warn.Render("▲ ")
+		}
+		line := mark + padRight(a.Title, 18) + dim.Render(a.Hint)
 		if i == m.actionCursor {
 			rows = append(rows, tabActive.Render(padRight(line, w-6)))
 		} else {
@@ -331,26 +349,32 @@ func (m Model) publishView(w, h int) string {
 func (m Model) logView(w, h int) string {
 	msgs := m.client.Snapshot()
 	topic := m.selectedTopic()
-	rows := make([]string, 0, len(msgs))
+
+	// Filter first, then take only the rows that fit, then decode. Decoding the
+	// whole 4096-message ring on every keystroke is what makes this pane slow
+	// once the buffer fills.
+	filtered := make([]broker.Msg, 0, len(msgs))
 	for _, msg := range msgs {
 		if topic != "" && msg.Topic != topic {
 			continue
 		}
-		rows = append(rows, m.logLine(msg, w))
+		filtered = append(filtered, msg)
 	}
 
 	if !m.followLog {
-		// Offset counts back from the newest message.
-		end := len(rows) - m.logOffset
+		end := len(filtered) - m.logOffset
 		if end < 0 {
 			end = 0
 		}
-		if end < len(rows) {
-			rows = rows[:end]
-		}
+		filtered = filtered[:end]
 	}
-	if len(rows) > h {
-		rows = rows[len(rows)-h:]
+	if len(filtered) > h {
+		filtered = filtered[len(filtered)-h:]
+	}
+
+	rows := make([]string, 0, len(filtered))
+	for _, msg := range filtered {
+		rows = append(rows, m.logLine(msg, w))
 	}
 	if len(rows) == 0 {
 		return dim.Render("nothing here yet")

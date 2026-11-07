@@ -43,7 +43,7 @@ Writing:
 
 ## Install
 
-Go 1.24 or newer.
+Go 1.25 or newer.
 
 ```
 git clone https://github.com/jcpsimmons/sharkboard
@@ -133,7 +133,7 @@ docs/field-labels.md    provenance for every label
 go test ./...
 ```
 
-Decoding, frame handling and rendering are tested against two real captured frames in `internal/qfeel/testdata`, so the tests fail if a label or a parse rule drifts. Screens are golden-tested; regenerate with `go test ./internal/tui -update` after an intentional layout change.
+Decoding, frame handling and rendering are tested against real captured frames (the scan run kept two, so a decode rule has to hold across both) in `internal/qfeel/testdata`, so the tests fail if a label or a parse rule drifts. Screens are golden-tested; regenerate with `go test ./internal/tui -update` after an intentional layout change.
 
 ## Limits
 

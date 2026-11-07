@@ -1,7 +1,7 @@
 sharkboard  192.168.1.79:1883  ● down                                 1 telemetry  2 topics  3 lidar map  4 publish 
 ╭──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮
 │ lidar map  (live, unauthenticated, 5 Hz while moving)                                                                │
-│ 169x234 cells · 0.06 m/cell · 10.1 x 14.0 m · free 30605 · wall 7813 · fringe 1066 · unseen 35  ·  pose -0.49,0.01   │
+│ 169x234 cells · 0.06 m/cell · 10.1 x 14.0 m · free 30605 · wall 7813 · fringe 1066 · unseen 35  ·  pose -0.49,0.01 … │
 │                                                   ██                                                                 │
 │                                                   ██     █                                                           │
 │                                                    ██ ██████                                                         │

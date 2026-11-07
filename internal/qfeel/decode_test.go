@@ -70,7 +70,7 @@ func TestDecodeScanFrame(t *testing.T) {
 	}
 	// The robot was mid-run, which is the whole reason field 7 is on the wire.
 	if tel.State != StateRunning && tel.State != StateDocking && tel.State != 6 {
-		t.Logf("state = %d (%s)", tel.State, tel.State.Label())
+		t.Errorf("state = %d (%s), want a moving state", tel.State, tel.State.Label())
 	}
 	if len(tel.Ranges) == 0 {
 		t.Error("no range arrays decoded from the scan bundle")
@@ -100,6 +100,33 @@ func TestScanFramesAgree(t *testing.T) {
 	}
 	if b.Tick <= a.Tick {
 		t.Errorf("second tick %d is not after first %d", b.Tick, a.Tick)
+	}
+}
+
+// A tiny frame that declares 2^40 cells used to freeze the renderer, because
+// every consumer walked the declared width and height.
+func TestDecodeClampsAbsurdGridDimensions(t *testing.T) {
+	big := []byte{0x80, 0x80, 0x80, 0x80, 0x80, 0x20} // varint 1<<40
+	mapMsg := []byte{0x18, 0x20}                      // placeholder, rebuilt below
+	mapMsg = append([]byte{0x18}, big...)
+	mapMsg = append(append(mapMsg, 0x20), big...)
+	mapMsg = append(mapMsg, 0x32, 0x03, 75, 15, 75) // 6: three cells
+	scan := append([]byte{0x2a, byte(len(mapMsg))}, mapMsg...)
+	frame := append([]byte{0x3a, byte(len(scan))}, scan...)
+
+	tel, err := Decode(base64.StdEncoding.EncodeToString(frame))
+	if err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	g := tel.Grid
+	if g == nil {
+		t.Fatal("no grid")
+	}
+	if g.Width*g.Height != len(g.Cells) && !g.LengthMismatch {
+		t.Errorf("clamped grid %dx%d does not cover %d cells and is not flagged", g.Width, g.Height, len(g.Cells))
+	}
+	if g.Width > 1<<20 || g.Height > 1<<20 {
+		t.Errorf("grid still absurd: %dx%d", g.Width, g.Height)
 	}
 }
 

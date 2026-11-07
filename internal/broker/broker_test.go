@@ -100,6 +100,14 @@ func TestStatsFiltersOutOldTraffic(t *testing.T) {
 	}
 }
 
+func TestRingCountsDropped(t *testing.T) {
+	c := New(Options{Addr: "x:1883", Buffer: 2})
+	feed(c, "/qfeel/PbOutput", 5)
+	if got := c.Dropped(); got != 3 {
+		t.Errorf("dropped = %d, want 3", got)
+	}
+}
+
 func TestPublishWithoutConnection(t *testing.T) {
 	c := New(Options{Addr: "x:1883"})
 	if err := c.Publish("/qfeel/PbInput", []byte("gAEI")); err == nil {

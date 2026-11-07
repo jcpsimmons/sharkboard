@@ -46,6 +46,10 @@ var (
 	// panelTitle sits on top of a panel's own content.
 	panelTitle = lipgloss.NewStyle().Foreground(colDim).Bold(true)
 
+	// rowSel is a selected list row: background only, no padding, so rows keep
+	// their column alignment.
+	rowSel = lipgloss.NewStyle().Foreground(lipgloss.Color("#0d1117")).Background(colAccent)
+
 	// toast is a transient confirmation line.
 	toastOK   = lipgloss.NewStyle().Foreground(colGood)
 	toastErr  = lipgloss.NewStyle().Foreground(colBad)

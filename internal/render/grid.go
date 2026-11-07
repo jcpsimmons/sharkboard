@@ -77,6 +77,12 @@ func Grid(g *qfeel.Grid, width, height int) []string {
 		return nil
 	}
 
+	// The declared height keeps its job: it sets the plan's proportions, even
+	// when the buffer is short. But a frame can declare a height the buffer
+	// cannot back (or declare 2^40), so the sampling loops are also capped at
+	// the last row that has cells behind it.
+	maxRow := (len(g.Cells) + g.Width - 1) / g.Width
+
 	// Source cells per output column. The vertical figure is halved because one
 	// terminal cell is two source-cells tall; taking the max of the two means
 	// the block is always big enough to fit the budget in both axes.
@@ -100,6 +106,9 @@ func Grid(g *qfeel.Grid, width, height int) []string {
 		}
 		if row >= padY && row < padY+rows {
 			y0, y1 := span(row, sy, g.Height)
+			if y1 > maxRow {
+				y1 = maxRow
+			}
 			for col := 0; col < cols; col++ {
 				x0, x1 := span(col, sx, g.Width)
 				line[padX+col] = vote(g, x0, x1, y0, y1)
@@ -117,7 +126,8 @@ func Grid(g *qfeel.Grid, width, height int) []string {
 	return out
 }
 
-// vote returns the dominant class in one source block. Free only wins when it
+// vote returns the dominant class in one source block. An inverted or empty
+// range (rows past the end of the buffer) reads as unseen. Free only wins when it
 // strictly outnumbers every other class, so ties go to the blocker.
 //
 // An obstacle counts twice. A one-cell wall is shorter than a display cell, so
@@ -127,10 +137,15 @@ func Grid(g *qfeel.Grid, width, height int) []string {
 // and still lets a lone speck lose to a block of real floor.
 func vote(g *qfeel.Grid, x0, x1, y0, y1 int) rune {
 	var n [5]int
+	total := 0
 	for y := y0; y < y1; y++ {
 		for x := x0; x < x1; x++ {
 			n[qfeel.Classify(g.CellAt(x, y))]++
+			total++
 		}
+	}
+	if total == 0 {
+		return glyphUnseen
 	}
 	best, bestN := qfeel.CellBlocked, n[qfeel.CellBlocked]*2
 	for _, k := range [...]qfeel.CellKind{qfeel.CellFringe, qfeel.CellStray, qfeel.CellUnseen} {

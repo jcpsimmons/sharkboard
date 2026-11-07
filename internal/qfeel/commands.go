@@ -26,20 +26,31 @@ const (
 type Action struct {
 	Key     string
 	Title   string
+	Topic   string // defaults to TopicInput
 	Payload string
 	Hint    string
 	// Risky marks writes that move the physical robot.
 	Risky bool
 }
 
+// Target is the topic the action publishes on.
+func (a Action) Target() string {
+	if a.Topic == "" {
+		return TopicInput
+	}
+	return a.Topic
+}
+
 // Actions returns the mapped command set plus the heartbeat pair.
 func Actions() []Action {
 	return []Action{
-		{"pause", "Pause", CmdPause, "16:8 - stops the robot where it is, no return", true},
-		{"play", "Play", CmdPlay, "16:10 - starts a clean run; needs an idle robot", true},
-		{"dock", "Dock", CmdDock, "16:17 - drives it home", true},
-		{"heartbeat-a", "Heartbeat 8{1:3}", HeartbeatA, "session keepalive, no motion", false},
-		{"heartbeat-b", "Heartbeat 9:1", HeartbeatB, "the other half of the keepalive pair", false},
+		{Key: "pause", Title: "Pause", Payload: CmdPause, Hint: "16:8 - stops the robot where it is, no return", Risky: true},
+		{Key: "play", Title: "Play", Payload: CmdPlay, Hint: "16:10 - starts a clean run; needs an idle robot", Risky: true},
+		{Key: "dock", Title: "Dock", Payload: CmdDock, Hint: "16:17 - drives it home", Risky: true},
+		{Key: "heartbeat-a", Title: "Heartbeat 8{1:3}", Payload: HeartbeatA, Hint: "session keepalive, no motion"},
+		{Key: "heartbeat-b", Title: "Heartbeat 9:1", Payload: HeartbeatB, Hint: "the other half of the keepalive pair"},
+		{Key: "wifi-up", Title: "wifi cloud up", Topic: TopicWiFi, Payload: WiFiCloudUp, Hint: "plaintext flag, echoed not switched"},
+		{Key: "wifi-down", Title: "wifi cloud down", Topic: TopicWiFi, Payload: WiFiCloudDown, Hint: "plaintext flag, echoed not switched"},
 	}
 }
 
