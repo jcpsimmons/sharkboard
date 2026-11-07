@@ -1,0 +1,5 @@
+/sharkboard
+/sharksend
+*.test
+.DS_Store
+/dist/

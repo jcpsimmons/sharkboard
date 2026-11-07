@@ -1,0 +1,34 @@
+sharkboard  192.168.1.79:1883  ● down                                 1 telemetry  2 topics  3 lidar map  4 publish 
+╭────────────────────────────────────────────╮╭────────────────────────────────────────────────────────────────────╮
+│ robot                                      ││ newest frame (labels are inferred)                                 │
+│ state (4)     unmapped 6                   ││ tick_ms      2298131  ms counter, steps by exactly 201…            │
+│ battery (9:8) 100%                         ││ model        74  constant 74; model or firmware i…                 │
+│ battery trend                              ││ state        6 (unmapped 6)  14 idle-on-dock / 24 running / 7…     │
+│ progress (13) n/a                          ││ scan         scan bundle, grid…  container, only while the robot … │
+│ cadence       waiting for two frames       ││ status       battery 100%, cha…  battery and charge flags          │
+│ model (2)     74                           ││ x10          1  constant 1                                         │
+│ echo (16)     16 {1:{2:3222903194} 3:82…   ││ extra        {1:{2:3222903194}…  also echoes the last accepted co… │
+│ map label     none                         ││ x35          2  constant 2                                         │
+│                                            ││ x36          2  constant 2                                         │
+│ traffic                                    ││ x38          2  only present while active                          │
+│ arrival       idle                         ││ x40          2  only present while active                          │
+│ history                                    ││ x41          3  only present while active                          │
+│ no traffic yet                             ││ x45          2  0 docked, 2 while active                           │
+│                                            ││                                                                    │
+│                                            ││                                                                    │
+│                                            ││                                                                    │
+│                                            ││                                                                    │
+│                                            ││                                                                    │
+│                                            ││                                                                    │
+│                                            ││                                                                    │
+│                                            ││                                                                    │
+│                                            ││                                                                    │
+│                                            ││                                                                    │
+│                                            ││                                                                    │
+│                                            ││                                                                    │
+│                                            ││                                                                    │
+│                                            ││                                                                    │
+│                                            ││                                                                    │
+│                                            ││                                                                    │
+╰────────────────────────────────────────────╯╰────────────────────────────────────────────────────────────────────╯
+p pause  ·  s play  ·  d dock  ·  H heartbeat  ·  2 topics  ·  3 map  ·  4 publish  ·  ? help  ·  q quit
