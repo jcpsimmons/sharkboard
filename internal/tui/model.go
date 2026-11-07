@@ -64,10 +64,11 @@ type Model struct {
 	opts   Options
 	client *broker.Client
 
-	w, h int
-	v    view
-	help bool
-	quit bool
+	w, h   int
+	v      view
+	help   bool
+	quit   bool
+	splash bool
 
 	status  broker.Status
 	errText string
@@ -118,6 +119,7 @@ func New(opts Options) Model {
 		opts:         opts,
 		client:       broker.New(broker.Options{Addr: opts.Addr, ClientID: opts.ClientID}),
 		followLog:    true,
+		splash:       true,
 		topicInput:   ti,
 		payloadInput: pi,
 		status:       broker.StatusDown,
@@ -168,6 +170,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		cmds = append(cmds, tick(m.opts.Interval))
 
 	case tea.KeyMsg:
+		if m.splash {
+			// The card is informational; any key moves on.
+			m.splash = false
+			return m, nil
+		}
 		if m.help {
 			m.help = false
 			return m, nil

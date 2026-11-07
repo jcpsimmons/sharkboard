@@ -23,6 +23,8 @@ sharkboard  192.168.1.79:1883  ● connected                 1 telemetry  2 topi
 p pause  ·  s play  ·  d dock  ·  H heartbeat  ·  2 topics  ·  3 map  ·  4 publish  ·  ? help  ·  q quit
 ```
 
+On launch it shows a card naming the build and linking to [youtube.com/@drjoshcsimmons](https://youtube.com/@drjoshcsimmons) and [drjoshcsimmons.com](https://drjoshcsimmons.com). Any key dismisses it.
+
 ## Panes
 
 | Key | Pane | What it is |

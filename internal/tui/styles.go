@@ -50,6 +50,12 @@ var (
 	// their column alignment.
 	rowSel = lipgloss.NewStyle().Foreground(lipgloss.Color("#0d1117")).Background(colAccent)
 
+	// splash is the load card: a box that sits over the panes until a key.
+	splashBox = lipgloss.NewStyle().
+			Border(lipgloss.RoundedBorder()).
+			BorderForeground(colAccent).
+			Padding(1, 3)
+
 	// toast is a transient confirmation line.
 	toastOK   = lipgloss.NewStyle().Foreground(colGood)
 	toastErr  = lipgloss.NewStyle().Foreground(colBad)

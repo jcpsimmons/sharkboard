@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 
 	"github.com/jcpsimmons/sharkboard/internal/broker"
 	"github.com/jcpsimmons/sharkboard/internal/qfeel"
@@ -23,8 +24,9 @@ var stampRE = regexp.MustCompile(`\d\d:\d\d:\d\d\.\d\d\d`)
 // the panes can be rendered deterministically.
 func fixture(t *testing.T, frame string) Model {
 	t.Helper()
-	m := New(Options{Addr: "192.168.1.79:1883"})
+	m := New(Options{Addr: "192.168.1.79:1883", Version: "9.9.9"})
 	m.w, m.h = 120, 38
+	m.splash = false // the card is tested on its own
 	if frame == "" {
 		return m
 	}
@@ -66,6 +68,35 @@ func golden(t *testing.T, name, got string) {
 	}
 	if string(want) != got {
 		t.Errorf("%s drifted from golden:\n--- got ---\n%s\n--- want ---\n%s", name, got, want)
+	}
+}
+
+func TestSplashCardOnLoad(t *testing.T) {
+	m := New(Options{Addr: "192.168.1.79:1883", Version: "9.9.9"})
+	m.w, m.h = 100, 30
+	if !m.splash {
+		t.Fatal("splash is not shown on load")
+	}
+	out := m.View()
+	golden(t, "splash.txt", out)
+	for _, want := range []string{"another fine release by DrJ", "youtube.com/@drjoshcsimmons", "drjoshcsimmons.com", "sharkboard 9.9.9"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("splash missing %q", want)
+		}
+	}
+	// OSC 8, so the links are clickable where the terminal supports it.
+	if !strings.Contains(out, "\x1b]8;;https://youtube.com/@drjoshcsimmons") {
+		t.Error("youtube link is not a hyperlink")
+	}
+
+	// Any key dismisses it; the next key acts on the pane.
+	nm, _ := m.Update(keyMsg("x"))
+	m = nm.(Model)
+	if m.splash {
+		t.Error("splash survived a keypress")
+	}
+	if !strings.Contains(m.View(), "state (4)") {
+		t.Error("dashboard did not come up after the splash")
 	}
 }
 
@@ -144,6 +175,38 @@ func TestTopicsPaneRenders(t *testing.T) {
 	}
 }
 
+// The selected command row has to be a full-width bar, not a ragged highlight.
+func TestPublishSelectionIsFullWidth(t *testing.T) {
+	m := fixture(t, "")
+	m.v = viewPublish
+	rows := strings.Split(m.View(), "\n")
+	var widths []int
+	for _, row := range rows {
+		if strings.Contains(row, "Pause") || strings.Contains(row, "Dock") {
+			widths = append(widths, lipgloss.Width(row)-lipgloss.Width(strings.TrimSpace(row)))
+		}
+	}
+	if len(widths) < 2 {
+		t.Fatalf("found %d command rows", len(widths))
+	}
+	if widths[0] != widths[1] {
+		t.Errorf("selected row padding %d differs from unselected %d", widths[0], widths[1])
+	}
+
+	// Every line of the pane has to be the same width, or the bar and the border
+	// come out ragged.
+	seen := map[int]bool{}
+	for _, row := range rows {
+		if !strings.HasPrefix(row, "│") {
+			continue
+		}
+		seen[lipgloss.Width(row)] = true
+	}
+	if len(seen) > 1 {
+		t.Errorf("pane rows have %d distinct widths: %v", len(seen), seen)
+	}
+}
+
 func TestPublishPaneMarksRiskyWrites(t *testing.T) {
 	m := fixture(t, "")
 	m.v = viewPublish
@@ -162,7 +225,7 @@ func TestPublishPaneListsEveryAction(t *testing.T) {
 			t.Errorf("publish pane missing action %q", a.Title)
 		}
 	}
-	if !strings.Contains(out, "no ack") {
+	if !strings.Contains(out, "No ack") {
 		t.Error("publish pane does not warn about the missing ack")
 	}
 }

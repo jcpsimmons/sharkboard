@@ -28,6 +28,8 @@ func (m Model) View() string {
 
 	body := ""
 	switch {
+	case m.splash:
+		body = m.splashView(w, h-6)
 	case m.help:
 		body = m.helpView(w, h-6)
 	case m.v == viewDash:
@@ -317,22 +319,26 @@ func (m Model) mapView(w, h int) string {
 
 func (m Model) publishView(w, h int) string {
 	acts := qfeel.Actions()
+	innerW := w - 8
 	rows := make([]string, 0, len(acts))
 	for i, a := range acts {
 		mark := "  "
 		if a.Risky {
 			mark = warn.Render("▲ ")
 		}
-		line := mark + padRight(a.Title, 18) + dim.Render(a.Hint)
+		line := mark + padRight(a.Title, 18) + dim.Render(clip(a.Hint, max(10, innerW-20)))
+		// Pad to the panel's inner width so the highlight is a clean bar rather
+		// than a ragged run of text, and so no hint wraps under a border.
+		line = padRight(line, innerW)
 		if i == m.actionCursor {
-			rows = append(rows, tabActive.Render(padRight(line, w-6)))
+			rows = append(rows, rowSel.Render(line))
 		} else {
 			rows = append(rows, base.Render(line))
 		}
 	}
 
-	note := dim.Render("QoS 0, no retain, base64 text on ") + addr.Render(qfeel.TopicInput) + "\n" +
-		dim.Render("There is no ack, and no device id in the frame: every robot on the LAN takes it.") + "\n" +
+	note := dim.Render("QoS 0, no retain, base64 text on ") + addr.Render(clip(qfeel.TopicInput, 24)) + "\n" +
+		dim.Render("No ack, and no device id in the frame: every robot on the LAN takes it.") + "\n" +
 		dim.Render("Confirmation is the state field (4) moving, or the echo in field 16.")
 
 	editor := ""
@@ -342,8 +348,46 @@ func (m Model) publishView(w, h int) string {
 			dim.Render("tab switch · ctrl+s send · esc cancel")
 	}
 
-	body := panelTitle.Render("commands") + "\n\n" + strings.Join(rows, "\n") + "\n\n" + note + editor
-	return fit(panel.Width(w-4).Render(body), h)
+	body := panelTitle.Render("commands") + dim.Render("  ▲ moves the robot") + "\n\n" +
+		strings.Join(rows, "\n") + "\n\n" + note + editor
+	return fit(panel.Width(w-2).Render(body), h)
+}
+
+// splashView is the load card: what this is, who made it, and clickable links.
+func (m Model) splashView(w, h int) string {
+	card := splashBox.Render(
+		title.Render("sharkboard "+m.opts.Version) + "\n" +
+			dim.Render("a wire console for a Shark robot vacuum") + "\n\n" +
+			base.Render("another fine release by DrJ") + "\n\n" +
+			dim.Render("youtube  ") + hyperlink("https://youtube.com/@drjoshcsimmons") + "\n" +
+			dim.Render("web      ") + hyperlink("https://drjoshcsimmons.com") + "\n\n" +
+			faint.Render("press any key"),
+	)
+
+	lines := strings.Split(card, "\n")
+	cardW := 0
+	for _, l := range lines {
+		if n := lipgloss.Width(l); n > cardW {
+			cardW = n
+		}
+	}
+	padX := max(0, (w-cardW)/2)
+	padY := max(0, (h-len(lines))/2)
+
+	var b strings.Builder
+	for i := 0; i < padY; i++ {
+		b.WriteByte('\n')
+	}
+	for _, l := range lines {
+		b.WriteString(strings.Repeat(" ", padX) + l + "\n")
+	}
+	return strings.TrimRight(b.String(), "\n")
+}
+
+// hyperlink wraps a URL in an OSC 8 hyperlink where the terminal supports it and
+// prints the URL as the label either way, so the card is useful in a plain pty.
+func hyperlink(url string) string {
+	return "\x1b]8;;" + url + "\x1b\\" + addr.Render(url) + "\x1b]8;;\x1b\\"
 }
 
 func (m Model) logView(w, h int) string {

@@ -1,9 +1,9 @@
 sharkboard  192.168.1.79:1883  ● down                                 1 telemetry  2 topics  3 lidar map  4 publish 
 ╭──────────────────────────────────────╮╭────────────────────────────────────────────────────────────────────────────╮
 │ topics by traffic                    ││ messages                                                                   │
-│ filter:                              ││ 14:51:19.926 ▲ /qfeel/PbOutput           76 state=14(idle/dock) battery=1… │
-│                                      ││ 14:51:19.926 ▲ /viper/wifiIn             25 WIFISecondaryCloudUp:true      │
-│ /qfeel/PbInput           0.1/s     4 ││ 14:51:19.926 ▲ /qfeel/PbInput             4 gAEI                           │
+│ filter:                              ││ 15:03:33.082 ▲ /qfeel/PbOutput           76 state=14(idle/dock) battery=1… │
+│                                      ││ 15:03:33.082 ▲ /viper/wifiIn             25 WIFISecondaryCloudUp:true      │
+│ /qfeel/PbInput           0.1/s     4 ││ 15:03:33.082 ▲ /qfeel/PbInput             4 gAEI                           │
 │ /qfeel/PbOutput          0.1/s    76 │╰────────────────────────────────────────────────────────────────────────────╯
 │ /viper/wifiIn            0.1/s    25 │                                                                              
 ╰──────────────────────────────────────╯                                                                              
