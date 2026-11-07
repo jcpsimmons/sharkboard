@@ -46,7 +46,13 @@ func (m Model) View() string {
 }
 
 func (m Model) header(w int) string {
-	left := title.Render("sharkboard") + "  " + addr.Render(m.opts.Addr)
+	where := dim.Render("probing the LAN…")
+	if m.addr != "" {
+		where = addr.Render(m.addr)
+	} else if !m.probing {
+		where = warn.Render("no broker")
+	}
+	left := title.Render("sharkboard") + "  " + where
 
 	st := bad.Render("● down")
 	switch m.status {
@@ -359,6 +365,7 @@ func (m Model) splashView(w, h int) string {
 		title.Render("sharkboard "+m.opts.Version) + "\n" +
 			dim.Render("a wire console for a Shark robot vacuum") + "\n\n" +
 			base.Render("another fine release by DrJ") + "\n\n" +
+			m.splashStatus() + "\n\n" +
 			dim.Render("youtube  ") + hyperlink("https://youtube.com/@drjoshcsimmons") + "\n" +
 			dim.Render("web      ") + hyperlink("https://drjoshcsimmons.com") + "\n\n" +
 			faint.Render("press any key"),
@@ -382,6 +389,20 @@ func (m Model) splashView(w, h int) string {
 		b.WriteString(strings.Repeat(" ", padX) + l + "\n")
 	}
 	return strings.TrimRight(b.String(), "\n")
+}
+
+// splashStatus is the one line under the card's title that says what the tool
+// is doing right now, so the card is useful while discovery runs behind it.
+func (m Model) splashStatus() string {
+	switch {
+	case m.status == broker.StatusUp && m.addr != "":
+		return good.Render("● connected to ") + addr.Render(m.addr)
+	case m.addr != "":
+		return dim.Render("connecting to ") + addr.Render(m.addr)
+	case m.probing:
+		return warn.Render("looking for a broker on the LAN…")
+	}
+	return dim.Render("no broker found, press r to look again")
 }
 
 // hyperlink wraps a URL in an OSC 8 hyperlink where the terminal supports it and

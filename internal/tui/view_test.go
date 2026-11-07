@@ -71,6 +71,44 @@ func golden(t *testing.T, name, got string) {
 	}
 }
 
+// Discovery must not run before the card is up: with no address, the card
+// paints and the sweep happens behind it.
+func TestSplashShowsWhileProbing(t *testing.T) {
+	m := New(Options{Version: "9.9.9", Discover: func() (string, error) { return "10.0.0.5:1883", nil }})
+	m.w, m.h = 100, 30
+	if !m.splash || !m.probing {
+		t.Fatalf("splash=%v probing=%v, want both set before any command runs", m.splash, m.probing)
+	}
+	if out := m.View(); !strings.Contains(out, "looking for a broker") {
+		t.Error("card does not say what it is doing")
+	}
+
+	// The init command batch carries the dial; it should only report an
+	// address, not connect yet.
+	batch, ok := m.Init()().(tea.BatchMsg)
+	if !ok {
+		t.Fatalf("init did not batch (got %T)", m.Init()())
+	}
+	var lm linkMsg
+	for _, c := range batch {
+		out, ok := c().(linkMsg)
+		if ok {
+			lm = out
+		}
+	}
+	if lm.err != nil || lm.addr != "10.0.0.5:1883" {
+		t.Fatalf("linkMsg = %+v", lm)
+	}
+	nm, _ := m.Update(lm)
+	m = nm.(Model)
+	if m.probing {
+		t.Error("still probing after the address arrived")
+	}
+	if m.addr != "10.0.0.5:1883" {
+		t.Errorf("addr = %q", m.addr)
+	}
+}
+
 func TestSplashCardOnLoad(t *testing.T) {
 	m := New(Options{Addr: "192.168.1.79:1883", Version: "9.9.9"})
 	m.w, m.h = 100, 30

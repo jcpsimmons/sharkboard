@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -41,14 +42,26 @@ func (v view) title() string {
 // Options configures a Model.
 type Options struct {
 	Addr      string
+	Port      int
 	Interval  time.Duration
 	NoPublish bool
 	Version   string
 	ClientID  string
+	// Discover finds a broker when Addr is empty. It runs inside the program,
+	// after the launch card is on screen, so a LAN sweep never delays startup.
+	Discover func() (string, error)
 }
 
 type tickMsg time.Time
-type reconnectMsg error
+
+// errNoAddr is returned when there is neither a host nor a way to find one.
+var errNoAddr = errors.New("no broker address and no LAN probe available")
+
+// linkMsg reports the outcome of a dial, after an optional discovery.
+type linkMsg struct {
+	addr string
+	err  error
+}
 type sentMsg struct {
 	text string
 	err  bool
@@ -70,6 +83,8 @@ type Model struct {
 	quit   bool
 	splash bool
 
+	addr    string
+	probing bool
 	status  broker.Status
 	errText string
 
@@ -117,31 +132,59 @@ func New(opts Options) Model {
 
 	m := Model{
 		opts:         opts,
+		addr:         opts.Addr,
 		client:       broker.New(broker.Options{Addr: opts.Addr, ClientID: opts.ClientID}),
 		followLog:    true,
 		splash:       true,
 		topicInput:   ti,
 		payloadInput: pi,
 		status:       broker.StatusDown,
+		probing:      opts.Addr == "" && opts.Discover != nil,
 	}
 	return m
 }
 
-func (m *Model) connect() tea.Cmd {
-	client := m.client
-	clientID := m.opts.ClientID
-	return func() tea.Msg {
-		err := client.Start()
-		if err == nil && clientID == "" {
-			// nothing else to do; the id was already generated on the client
+// link resolves an address if one is missing and dials it. Discovery runs in a
+// command, not before the program starts, so the launch card paints straight
+// away instead of after a LAN sweep.
+func (m *Model) link() tea.Cmd {
+	addr := m.addr
+	discover := m.opts.Discover
+
+	if addr == "" {
+		if discover == nil {
+			return func() tea.Msg { return linkMsg{err: errNoAddr} }
 		}
-		return reconnectMsg(err)
+		m.probing = true
+		return func() tea.Msg {
+			found, err := discover()
+			if err != nil {
+				return linkMsg{err: err}
+			}
+			return linkMsg{addr: found}
+		}
+	}
+
+	client := m.client
+	return func() tea.Msg {
+		return linkMsg{addr: addr, err: client.Start()}
+	}
+}
+
+// dial swaps in a client for a freshly discovered address and connects.
+func (m *Model) dial(addr string) tea.Cmd {
+	m.addr = addr
+	m.client.Close()
+	m.client = broker.New(broker.Options{Addr: addr, ClientID: m.opts.ClientID})
+	client := m.client
+	return func() tea.Msg {
+		return linkMsg{addr: addr, err: client.Start()}
 	}
 }
 
 // Init starts the refresh ticker and dials the broker.
 func (m Model) Init() tea.Cmd {
-	return tea.Batch(tick(m.opts.Interval), m.connect())
+	return tea.Batch(tick(m.opts.Interval), m.link())
 }
 
 func tick(d time.Duration) tea.Cmd {
@@ -156,9 +199,15 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		m.w, m.h = msg.Width, msg.Height
 
-	case reconnectMsg:
-		if err := error(msg); err != nil {
-			m.setToast(err.Error(), true)
+	case linkMsg:
+		m.probing = false
+		switch {
+		case msg.err != nil:
+			m.addr = msg.addr
+			m.setToast(msg.err.Error(), true)
+		case msg.addr != "" && msg.addr != m.addr:
+			// First answer from discovery: build a client for it and dial.
+			cmds = append(cmds, m.dial(msg.addr))
 		}
 
 	case sentMsg:
@@ -214,8 +263,8 @@ func (m *Model) onKey(k tea.KeyMsg) tea.Cmd {
 	case "shift+tab":
 		m.v = (m.v + viewCount - 1) % viewCount
 	case "r":
-		m.setToast("reconnecting to "+m.opts.Addr, false)
-		return m.connect()
+		m.setToast("reconnecting", false)
+		return m.link()
 	}
 
 	switch m.v {

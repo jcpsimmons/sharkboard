@@ -52,15 +52,16 @@ func main() {
 		addr = net.JoinHostPort(h, fmt.Sprint(*port))
 	}
 
-	if addr == "" {
-		fmt.Fprintf(os.Stderr, "probing the LAN for an open %d...\n", *port)
+	// -once resolves the address up front because there is no program to paint
+	// a card from. The TUI discovers inside the program instead, so the card is
+	// on screen while the sweep runs.
+	if *once && addr == "" {
 		found, err := discover(4*time.Second, *port)
 		if err != nil {
 			fmt.Fprintln(os.Stderr, "no broker found:", err)
 			os.Exit(1)
 		}
 		addr = found
-		fmt.Fprintln(os.Stderr, "found broker at", addr)
 	}
 
 	if *once {
@@ -73,9 +74,13 @@ func main() {
 
 	m := tui.New(tui.Options{
 		Addr:      addr,
+		Port:      *port,
 		Interval:  *interval,
 		NoPublish: *dryRun,
 		Version:   version,
+		Discover: func() (string, error) {
+			return discover(4*time.Second, *port)
+		},
 	})
 	p := tea.NewProgram(m, tea.WithAltScreen(), tea.WithMouseCellMotion())
 	if _, err := p.Run(); err != nil {

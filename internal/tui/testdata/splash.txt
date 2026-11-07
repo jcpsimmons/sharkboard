@@ -3,13 +3,14 @@ sharkboard  192.168.1.79:1883  ● down             1 telemetry  2 topics  3 lid
 
 
 
-
                         ╭──────────────────────────────────────────────────╮
                         │                                                  │
                         │   sharkboard 9.9.9                               │
                         │   a wire console for a Shark robot vacuum        │
                         │                                                  │
                         │   another fine release by DrJ                    │
+                        │                                                  │
+                        │   connecting to 192.168.1.79:1883                │
                         │                                                  │
                         │   youtube  ]8;;https://youtube.com/@drjoshcsimmons\https://youtube.com/@drjoshcsimmons]8;;\   │
                         │   web      ]8;;https://drjoshcsimmons.com\https://drjoshcsimmons.com]8;;\            │

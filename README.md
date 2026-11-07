@@ -23,7 +23,7 @@ sharkboard  192.168.1.79:1883  ● connected                 1 telemetry  2 topi
 p pause  ·  s play  ·  d dock  ·  H heartbeat  ·  2 topics  ·  3 map  ·  4 publish  ·  ? help  ·  q quit
 ```
 
-On launch it shows a card naming the build and linking to [youtube.com/@drjoshcsimmons](https://youtube.com/@drjoshcsimmons) and [drjoshcsimmons.com](https://drjoshcsimmons.com). Any key dismisses it.
+On launch it shows a card naming the build, saying what it is doing (probing, connecting, connected), and linking to [youtube.com/@drjoshcsimmons](https://youtube.com/@drjoshcsimmons) and [drjoshcsimmons.com](https://drjoshcsimmons.com). Any key dismisses it.
 
 ## Panes
 
@@ -58,7 +58,7 @@ Press `q` to leave. `-dry-run` connects and watches but publishes nothing.
 
 ## Finding the robot
 
-The vacuum leases a new address from DHCP whenever it feels like it (`.78` one week, `.79` the next), so by default the tool probes the local `/24` for anything answering on `1883` and keeps the first candidate that actually publishes `/qfeel` traffic. That is noisy but it usually lands in a couple of seconds. Point it at a known address when you would rather not sweep:
+The vacuum leases a new address from DHCP whenever it feels like it (`.78` one week, `.79` the next), so by default the tool probes the local `/24` for anything answering on `1883` and keeps the first candidate that actually publishes `/qfeel` traffic. That is noisy but it usually lands in a couple of seconds. The launch card paints first and the sweep runs behind it, so startup is never blocked by discovery; the card's status line flips to the address it found. Point it at a known address when you would rather not sweep:
 
 ```
 ./sharkboard -host 192.168.1.79
